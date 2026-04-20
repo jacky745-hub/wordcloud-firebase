@@ -1,0 +1,123 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>課堂文字雲 - 輸入</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: 'Microsoft JhengHei', sans-serif;
+      background: #f0f4ff;
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .card {
+      background: white;
+      border-radius: 16px;
+      padding: 40px 32px;
+      width: 90%;
+      max-width: 480px;
+      box-shadow: 0 4px 24px rgba(0,0,0,0.1);
+      text-align: center;
+    }
+    h1 { font-size: 1.6rem; color: #333; margin-bottom: 8px; }
+    p  { color: #666; margin-bottom: 28px; font-size: 0.95rem; }
+    input {
+      width: 100%;
+      padding: 14px 16px;
+      font-size: 1.1rem;
+      border: 2px solid #ddd;
+      border-radius: 10px;
+      outline: none;
+      transition: border-color .2s;
+      font-family: inherit;
+    }
+    input:focus { border-color: #4f8ef7; }
+    button {
+      margin-top: 16px;
+      width: 100%;
+      padding: 14px;
+      font-size: 1.1rem;
+      background: #4f8ef7;
+      color: white;
+      border: none;
+      border-radius: 10px;
+      cursor: pointer;
+      font-family: inherit;
+      font-weight: bold;
+      transition: background .2s;
+    }
+    button:hover { background: #2d6fdb; }
+    button:disabled { background: #aaa; cursor: not-allowed; }
+    .msg {
+      margin-top: 16px;
+      font-size: 1rem;
+      min-height: 24px;
+    }
+    .msg.ok  { color: #2e7d32; }
+    .msg.err { color: #c62828; }
+    .count { margin-top: 20px; color: #888; font-size: 0.85rem; }
+  </style>
+</head>
+<body>
+<div class="card">
+  <h1>📝 課堂文字雲</h1>
+  <p>輸入一個關鍵字，送出後會即時出現在文字雲上！</p>
+  <input type="text" id="wordInput" placeholder="輸入關鍵字..." maxlength="20" autofocus>
+  <button id="submitBtn" onclick="submitWord()">送出</button>
+  <div class="msg" id="msg"></div>
+  <div class="count" id="count"></div>
+</div>
+
+<script type="module">
+  import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js';
+  import { getFirestore, collection, addDoc, getDocs, serverTimestamp, onSnapshot } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js';
+
+  const app = initializeApp({
+    apiKey: "AIzaSyDl298TgTC1tzxgw1ffGuUWakXmb_7OUW0",
+    authDomain: "cp-tools-2c4d2.firebaseapp.com",
+    projectId: "cp-tools-2c4d2",
+    storageBucket: "cp-tools-2c4d2.firebasestorage.app",
+    messagingSenderId: "407584130600",
+    appId: "1:407584130600:web:889052a6ec031f58c6d71d"
+  });
+  const db = getFirestore(app);
+  const col = collection(db, 'wordcloud_words');
+
+  // 即時更新計數
+  onSnapshot(col, snap => {
+    document.getElementById('count').textContent = `目前已有 ${snap.size} 個關鍵字`;
+  });
+
+  window.submitWord = async function() {
+    const input = document.getElementById('wordInput');
+    const msg   = document.getElementById('msg');
+    const btn   = document.getElementById('submitBtn');
+    const word  = input.value.trim();
+
+    if (!word) { msg.className = 'msg err'; msg.textContent = '請輸入關鍵字！'; return; }
+
+    btn.disabled = true;
+    msg.className = 'msg'; msg.textContent = '送出中...';
+    try {
+      await addDoc(col, { word, created_at: serverTimestamp() });
+      msg.className = 'msg ok';
+      msg.textContent = `「${word}」已送出 ✓`;
+      input.value = '';
+    } catch(e) {
+      msg.className = 'msg err';
+      msg.textContent = '送出失敗，請重試';
+    }
+    btn.disabled = false;
+    input.focus();
+  };
+
+  document.getElementById('wordInput').addEventListener('keydown', e => {
+    if (e.key === 'Enter') window.submitWord();
+  });
+</script>
+</body>
+</html>

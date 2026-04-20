@@ -1,0 +1,141 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>課堂文字雲 - 展示</title>
+  <script src="https://cdn.jsdelivr.net/npm/wordcloud@1.2.2/src/wordcloud2.js"></script>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      background: #1a1a2e;
+      color: white;
+      font-family: 'Microsoft JhengHei', sans-serif;
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+    header {
+      text-align: center;
+      padding: 16px;
+      background: rgba(255,255,255,0.05);
+      border-bottom: 1px solid rgba(255,255,255,0.1);
+    }
+    header h1 { font-size: 1.4rem; letter-spacing: 2px; }
+    header p  { font-size: 0.85rem; color: #aaa; margin-top: 4px; }
+    #canvas-wrap {
+      flex: 1;
+      position: relative;
+    }
+    canvas { display: block; }
+    #status {
+      position: absolute;
+      bottom: 12px;
+      right: 16px;
+      font-size: 0.8rem;
+      color: rgba(255,255,255,0.4);
+    }
+    #count-badge {
+      position: absolute;
+      top: 12px;
+      left: 16px;
+      background: rgba(79,142,247,0.3);
+      border: 1px solid #4f8ef7;
+      border-radius: 20px;
+      padding: 4px 14px;
+      font-size: 0.85rem;
+      color: #a8c8ff;
+    }
+    #empty-msg {
+      position: absolute;
+      inset: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: rgba(255,255,255,0.3);
+      font-size: 1.2rem;
+      pointer-events: none;
+    }
+  </style>
+</head>
+<body>
+<header>
+  <h1>☁️ 即時文字雲</h1>
+  <p>學生輸入後，關鍵字將即時出現在這裡</p>
+</header>
+<div id="canvas-wrap">
+  <canvas id="canvas"></canvas>
+  <div id="count-badge">0 個關鍵字</div>
+  <div id="status">即時同步中…</div>
+  <div id="empty-msg">等待學生輸入關鍵字…</div>
+</div>
+
+<script type="module">
+  import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js';
+  import { getFirestore, collection, onSnapshot } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js';
+
+  const app = initializeApp({
+    apiKey: "AIzaSyDl298TgTC1tzxgw1ffGuUWakXmb_7OUW0",
+    authDomain: "cp-tools-2c4d2.firebaseapp.com",
+    projectId: "cp-tools-2c4d2",
+    storageBucket: "cp-tools-2c4d2.firebasestorage.app",
+    messagingSenderId: "407584130600",
+    appId: "1:407584130600:web:889052a6ec031f58c6d71d"
+  });
+  const db = getFirestore(app);
+  const col = collection(db, 'wordcloud_words');
+
+  const canvas   = document.getElementById('canvas');
+  const wrap     = document.getElementById('canvas-wrap');
+  const emptyMsg = document.getElementById('empty-msg');
+  const badge    = document.getElementById('count-badge');
+
+  function resize() {
+    canvas.width  = wrap.clientWidth;
+    canvas.height = wrap.clientHeight;
+  }
+  resize();
+  window.addEventListener('resize', () => { resize(); drawCloud(lastWords); });
+
+  const COLORS = ['#4f8ef7','#f7c94f','#f7714f','#4ff7a8','#c44ff7','#f74f9e','#4ff7f7'];
+  let lastWords = [];
+
+  function drawCloud(words) {
+    lastWords = words;
+    emptyMsg.style.display = words.length === 0 ? 'flex' : 'none';
+    if (words.length === 0) return;
+
+    // 統計詞頻
+    const freq = {};
+    words.forEach(w => { freq[w] = (freq[w] || 0) + 1; });
+    const max = Math.max(...Object.values(freq));
+    const minSize = 20, maxSize = Math.min(wrap.clientWidth, wrap.clientHeight) * 0.18;
+
+    const list = Object.entries(freq).map(([text, count]) => [
+      text,
+      minSize + (count / max) * (maxSize - minSize)
+    ]);
+
+    WordCloud(canvas, {
+      list,
+      gridSize: 12,
+      weightFactor: 1,
+      fontFamily: 'Microsoft JhengHei, sans-serif',
+      color: () => COLORS[Math.floor(Math.random() * COLORS.length)],
+      rotateRatio: 0.3,
+      backgroundColor: '#1a1a2e',
+      shuffle: true,
+    });
+  }
+
+  onSnapshot(col, snap => {
+    const words = snap.docs.map(d => d.data().word).filter(Boolean);
+    badge.textContent = `${words.length} 個關鍵字`;
+    drawCloud(words);
+    document.getElementById('status').textContent =
+      `最後更新：${new Date().toLocaleTimeString('zh-TW')}`;
+  });
+</script>
+</body>
+</html>
