@@ -35,6 +35,23 @@ const SYSTEM = `你是國中自然科的學科專家與概念圖評量者，依 
 8. comments、strengths、weaknesses 要具體指出這張圖的內容（哪個概念、哪條線），用國中生看得懂、委婉鼓勵的語氣；conflicts 只列出與文本相違背之處，沒有就給空陣列。
 9. 不得加入圖上沒有的內容，也不得引用本說明或其他圖的內容當作這張圖的得分細節。`;
 
+// 把 Anthropic API 的英文錯誤轉成老師看得懂的中文提示
+export function aiErrorText(e, Anthropic) {
+  const msg = String(e?.error?.error?.message || e?.message || e || '');
+  const has = s => msg.toLowerCase().includes(s);
+  if (has('credit balance')) return 'AI 判讀未完成：Anthropic 帳號餘額不足。請到 console.anthropic.com 的「Plans & Billing」儲值後，再按一次「AI 判讀並評分」（金鑰不用重填）。';
+  if (e instanceof Anthropic.AuthenticationError || has('invalid x-api-key')) return 'AI 判讀未完成：API 金鑰無效或已被刪除，請到「系統設定」重新填寫金鑰。';
+  if (e instanceof Anthropic.PermissionDeniedError) return 'AI 判讀未完成：這把金鑰沒有使用權限，請到 console.anthropic.com 確認金鑰所屬的組織與權限。';
+  if (e instanceof Anthropic.NotFoundError) return `AI 判讀未完成：此帳號無法使用模型 ${MODEL}，請聯絡系統維護者。`;
+  if (e instanceof Anthropic.RateLimitError) return 'AI 判讀未完成：短時間內送出太多請求，請等 1 分鐘後再按一次。';
+  if (e?.status === 529 || has('overloaded')) return 'AI 判讀未完成：AI 服務目前忙碌，請稍等幾分鐘後再按一次。';
+  if (e instanceof Anthropic.APIConnectionError) return 'AI 判讀未完成：連不上 AI 服務，請檢查網路後再按一次。';
+  if (e instanceof Anthropic.InternalServerError) return 'AI 判讀未完成：AI 服務暫時發生問題，請稍後再按一次。';
+  if (has('too large') || has('request_too_large')) return 'AI 判讀未完成：圖檔太大，請降低掃描解析度後重新上傳。';
+  if (e instanceof Anthropic.BadRequestError) return 'AI 判讀未完成：請求格式有誤，請改用「判讀匯入／修正」，並把以下訊息提供給系統維護者：' + msg;
+  return 'AI 判讀未完成，請稍後再試一次。（技術訊息：' + msg + '）';
+}
+
 async function call(content, schema) {
   const { default: Anthropic } = await import('https://cdn.jsdelivr.net/npm/@anthropic-ai/sdk/+esm');
   const client = new Anthropic({ apiKey: getKey(), dangerouslyAllowBrowser: true });
@@ -44,10 +61,7 @@ async function call(content, schema) {
       output_config: { effort: 'high', format: { type: 'json_schema', schema } },
       betas: ['server-side-fallback-2026-07-01'], fallbacks: 'default', messages: [{ role: 'user', content }] }).finalMessage();
   } catch (e) {
-    if (e instanceof Anthropic.AuthenticationError) throw new Error('API 金鑰無效，請到「系統設定」重新填寫。');
-    if (e instanceof Anthropic.RateLimitError) throw new Error('AI 服務目前流量已滿，請稍後再按一次。');
-    if (e instanceof Anthropic.APIConnectionError) throw new Error('連不上 AI 服務，請檢查網路。');
-    throw new Error('AI 判讀未完成：' + (e.message || e));
+    throw new Error(aiErrorText(e, Anthropic));
   }
   if (msg.stop_reason === 'refusal') throw new Error('AI 拒絕判讀此內容，請改用「匯入判讀」。');
   if (msg.stop_reason === 'max_tokens') throw new Error('AI 判讀輸出過長而中斷，請再試一次。');
