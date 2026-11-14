@@ -2,14 +2,68 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    // 你的第一個集合：任何人可讀寫
-    // 之後新增工具時在這裡加更多 match 區塊
+    // 既有工具：文字雲
     match /wordcloud_words/{document} {
       allow read, write: if true;
     }
-
     match /test_collection/{document} {
       allow read, write: if true;
+    }
+
+    // ============ 協作概念圖評分回饋系統（cm_ 開頭的集合）============
+    function signedIn() { return request.auth != null; }
+    function userPath(uid) { return /databases/$(database)/documents/cm_users/$(uid); }
+    function me() { return get(userPath(request.auth.uid)).data; }
+    // 帳號文件存在＝有效帳號；被管理者剔除（文件刪除）後即無法讀寫任何資料
+    function active() { return signedIn() && exists(userPath(request.auth.uid)); }
+    function rankOf(role) { return role == 'admin' ? 3 : (role == 'manager' ? 2 : (role == 'teacher' ? 1 : 0)); }
+    function myRank() { return active() ? rankOf(me().role) : -1; }
+    function isAdminEmail() { return request.auth.token.email == 'admin@conceptmap.example.com'; }
+
+    match /cm_users/{uid} {
+      allow read: if signedIn() && (request.auth.uid == uid || myRank() >= 1);
+      // 自行註冊只能是學生；帳號名稱為 admin 者為最高管理者
+      allow create: if signedIn() && request.auth.uid == uid
+                    && (request.resource.data.role == 'student' || (isAdminEmail() && request.resource.data.role == 'admin'));
+      // 本人可改基本資料但不能改身分與帳號；admin 可改任何人的身分
+      allow update: if (signedIn() && request.auth.uid == uid
+                        && request.resource.data.role == resource.data.role
+                        && request.resource.data.username == resource.data.username)
+                    || myRank() == 3;
+      // admin 可剔除任何人（不含自己）；管理者可剔除身分低於自己的人
+      allow delete: if request.auth.uid != uid && (myRank() == 3 || (myRank() == 2 && rankOf(resource.data.role) < 2));
+    }
+
+    match /cm_subs/{id} {
+      allow read: if myRank() >= 1
+                  || (active() && (resource.data.createdBy == request.auth.uid
+                      || (me().seat != '' && (me().school + '|' + me().cls + '|' + me().seat) in resource.data.memberKeys)));
+      // 學生只能建立「待判讀」且不含分數的資料；分數只有教師以上能寫入
+      allow create: if active() && request.resource.data.createdBy == request.auth.uid
+                    && (myRank() >= 1 || (request.resource.data.status == 'pending' && request.resource.data.result == null));
+      allow update, delete: if myRank() >= 1;
+    }
+
+    match /cm_images/{id} {
+      allow get: if active();
+      allow list: if myRank() >= 1;
+      allow create: if active() && request.resource.data.by == request.auth.uid;
+      allow delete: if myRank() >= 1;
+    }
+
+    match /cm_texts/{id} {
+      allow read: if active();
+      allow create: if active();
+      allow update, delete: if myRank() >= 1;
+    }
+
+    match /cm_analysis/{id} {
+      allow read, write: if myRank() >= 1;
+    }
+
+    match /cm_settings/{id} {
+      allow read: if myRank() >= 1;
+      allow write: if myRank() >= 2;
     }
 
     // 其他集合預設禁止存取
